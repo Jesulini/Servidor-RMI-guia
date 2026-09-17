@@ -2,10 +2,8 @@ package cliente;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
 
 public class Cliente extends JFrame {
 
@@ -24,7 +22,7 @@ public class Cliente extends JFrame {
 
     public Cliente() {
 
-        setTitle("Calculadora de Velocidad Promedio");
+        setTitle("Calculadora de Velocidad Promedio - UDP");
         setSize(500, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -77,9 +75,9 @@ public class Cliente extends JFrame {
 
         cmbUnidadTiempo = new JComboBox<>(
                 new String[]{
-                    "Horas (h)",
-                    "Minutos (min)",
-                    "Segundos (s)"
+                        "Horas (h)",
+                        "Minutos (min)",
+                        "Segundos (s)"
                 }
         );
 
@@ -163,55 +161,115 @@ public class Cliente extends JFrame {
             return;
         }
 
-        // Obtener unidades simplificadas
+        // Obtener unidades
         String unidadDistancia = obtenerUnidadDistancia();
         String unidadTiempo = obtenerUnidadTiempo();
 
-        // Conexión con el servidor
-        try (
-                Socket socket = new Socket(HOST, PUERTO);
+        try (DatagramSocket socket = new DatagramSocket()) {
 
-                DataOutputStream salida = new DataOutputStream(
-                        socket.getOutputStream()
-                );
+            /*
+             * Construir mensaje que será enviado
+             * al servidor.
+             */
+            String mensaje =
+                    distancia + "|" +
+                    tiempo + "|" +
+                    unidadDistancia + "|" +
+                    unidadTiempo;
 
-                DataInputStream entrada = new DataInputStream(
-                        socket.getInputStream()
-                )
-        ) {
+            byte[] datos = mensaje.getBytes();
 
-            // Enviar datos originales al servidor
-            salida.writeDouble(distancia);
-            salida.writeDouble(tiempo);
-            salida.writeUTF(unidadDistancia);
-            salida.writeUTF(unidadTiempo);
+            /*
+             * Obtener dirección del servidor.
+             */
+            InetAddress direccionServidor =
+                    InetAddress.getByName(HOST);
 
-            salida.flush();
+            /*
+             * Crear paquete UDP.
+             */
+            DatagramPacket paqueteEnvio =
+                    new DatagramPacket(
+                            datos,
+                            datos.length,
+                            direccionServidor,
+                            PUERTO
+                    );
 
-            // Recibir respuesta del servidor
-            boolean exito = entrada.readBoolean();
-            String mensaje = entrada.readUTF();
+            /*
+             * Enviar paquete.
+             */
+            socket.send(paqueteEnvio);
+
+            /*
+             * Preparar espacio para recibir
+             * la respuesta del servidor.
+             */
+            byte[] buffer = new byte[1024];
+
+            DatagramPacket paqueteRespuesta =
+                    new DatagramPacket(
+                            buffer,
+                            buffer.length
+                    );
+
+            /*
+             * Esperar respuesta del servidor.
+             */
+            socket.receive(paqueteRespuesta);
+
+            /*
+             * Convertir respuesta a String.
+             */
+            String respuesta = new String(
+                    paqueteRespuesta.getData(),
+                    0,
+                    paqueteRespuesta.getLength()
+            );
+
+            /*
+             * El servidor enviará:
+             *
+             * true|mensaje
+             *
+             * o
+             *
+             * false|mensaje
+             */
+            String[] partes = respuesta.split("\\|", 2);
+
+            boolean exito = Boolean.parseBoolean(partes[0]);
+            String mensajeRespuesta = partes[1];
 
             if (exito) {
 
                 txtResultado.setText(
-                        "Resultado recibido del servidor:\n\n"
-                        + mensaje
+                        "Resultado recibido del servidor UDP:\n\n"
+                        + mensajeRespuesta
                 );
 
             } else {
 
                 txtResultado.setText(
                         "El servidor informó un error:\n\n"
-                        + mensaje
+                        + mensajeRespuesta
                 );
             }
+
+        } catch (SocketTimeoutException e) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "El servidor no respondió a tiempo.",
+                    "Error UDP",
+                    JOptionPane.ERROR_MESSAGE
+            );
 
         } catch (IOException e) {
 
             JOptionPane.showMessageDialog(
                     this,
-                    "No fue posible conectar con el servidor.\n\n"
+                    "No fue posible comunicarse con el servidor UDP.\n\n"
                     + "Verifique que el servidor esté ejecutándose.\n"
                     + "Detalle: " + e.getMessage(),
                     "Error de conexión",
