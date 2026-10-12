@@ -1,1 +1,1 @@
-# Servidor-34-promedio-de-velocidad
+# Servidor-RMI-Guia
